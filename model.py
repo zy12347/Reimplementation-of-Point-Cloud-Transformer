@@ -17,6 +17,12 @@ class PCTransCls(nn.Module):
         self.sa3 = SelfAttention(128)
         self.sa4 = SelfAttention(128)
 
+        self.lbr = nn.Sequential(
+                    nn.Linear(in_features=512,out_features=1024),
+                    nn.BatchNorm1d(1024),
+                    nn.ReLU()
+                )
+        
     def forward(self):
         pass
 
