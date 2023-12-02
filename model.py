@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader,Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from Loader  import PartNormalDataset,ModelNetDataLoader
 
 
 class PCTransCls(nn.Module):
@@ -93,7 +94,7 @@ class PCTransCls(nn.Module):
             x11 = self.lbr2(x9) #for the alignment with classification part
         
         output = self.l1(x11)
-        return output
+        return output.view(output.shape[0],-1)
 
 class ModelNetDataset(Dataset):
     def __init__(self,path,train=True):
@@ -164,9 +165,27 @@ def test(test_dataloader,model,epoch,device,task):
     model.eval()
     correct_obj = 0
     num_obj = 0
+    
     for batch in test_dataloader:
-        point_clouds,label = batch
-    pass
+        point_clouds, labels = batch
+        point_clouds = torch.permute(point_clouds,(0,2,1)).to(device).float()
+        #point_clouds = point_clouds.to(device)
+        labels = labels.to(device).to(torch.long)
+        #########################################
+        #############YOUR CODE HERE##############
+        #########################################
+        predictions = model(point_clouds)
+        predictions = torch.argmax(predictions,dim=1)
+        #print(predictions)
+        #print(labels)
+        correct_obj += torch.sum(predictions==labels)
+        num_obj += len(labels)
+        #########################################
+    # Compute Accuracy of Test Dataset
+    accuracy = correct_obj / num_obj
+
+    return accuracy
+
 
 def train(train_dataloader,model,opt,epoch,device,Task):
     model.train()
@@ -175,17 +194,19 @@ def train(train_dataloader,model,opt,epoch,device,Task):
     
     for i,batch in enumerate(train_dataloader):
         point_clouds,labels = batch
-        point_clouds = torch.permute(point_clouds,(0,2,1))
-        point_clouds = point_clouds.to(device).float()
+        point_clouds = torch.permute(point_clouds,(0,2,1)).to(device).float()
         labels = labels.to(device)
         output = model(point_clouds)
         
-        # loss = loss_fn(y_pred, y_train_torch)
-        # print(t, loss.item())
-        # optimizer.zero_grad()
-        # loss.backward()
-        # optimizer.step()`
-    return 0
+        criterion = nn.CrossEntropyLoss()
+        loss = criterion(output, labels)
+        # print(t, loss.item()) 
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        epoch_loss += loss
+        
+    return epoch_loss
         
 
 def main():
@@ -203,7 +224,13 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
     opt = optim.Adam(model.parameters(),learning_rate)
     
-    train_dataloader = get_data_loader(path,batch_size,True)
+    train_data = ModelNetDataLoader('modelnet40_normal_resampled/', split='train', uniform=False, normal_channel=True)
+    train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=16, shuffle=True)
+     
+    test_data = ModelNetDataLoader('modelnet40_normal_resampled/', split='test', uniform=False, normal_channel=True)
+    test_dataloader = torch.utils.data.DataLoader(test_data, batch_size=16, shuffle=True)
+     
+    #train_dataloader = get_data_loader(path,batch_size,True)
     #test_dataloader = get_data_loader(path,batch_size,False)
     
     model = model.to(device)
@@ -212,7 +239,7 @@ def main():
     
     for epoch in tqdm(range(num_epochs)):
         train_epoch_loss = train(train_dataloader,model,opt,epoch,device,TASK) 
-        test_accuracy = 1#test()
+        test_accuracy = test(test_dataloader,model,epoch,device,TASK)
         print ("epoch: {}   train loss: {:.4f}   test accuracy: {:.4f}".format(epoch, train_epoch_loss, test_accuracy))
         #if test_accuracy>best_accuracy:
         #    best_accuracy = test_accuracy

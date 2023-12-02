@@ -3,7 +3,7 @@ import numpy as np
 def main():
     points = np.random.randint(0,100,size=(32,1024,3))
     
-    label = np.ones(32)
+    label = np.random.randint(0,6,size=32)
     np.save("data/cls/train_data.npy",points)
     np.save("data/cls/train_labels.npy",label)
     #print(points)
