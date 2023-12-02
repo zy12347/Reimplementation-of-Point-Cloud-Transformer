@@ -120,19 +120,67 @@ def get_data_loader(path,batch_size,train=True):
     dataloader = DataLoader(dataset,batch_size=batch_size,shuffle=train,num_workers=1)
     return dataloader
     
-class SelfAttention(nn.Module): 
-    def __init__(self,in_channel):
+class SelfAttention(nn.Module):
+    def __init(self,in_channel):
         super(SelfAttention,self).__init__()
+        self.in_channel = in_channel
+        self.q_conv = nn.Conv1d(in_channel, in_channel // 4, 1, bias=False)
+        self.k_conv = nn.Conv1d(in_channel, in_channel // 4, 1, bias=False)
+        self.v_conv = nn.Conv1d(in_channel, in_channel, 1)
+
+        self.q_conv.weight = self.k_conv.weight 
+        self.trans_conv = nn.Conv1d(in_channel, in_channel, 1)
+        self.after_norm = nn.BatchNorm1d(in_channel)
+        self.activate = nn.ReLU()
+        self.softmax = nn.Softmax(dim=-1)
+
 
     def forward(self,x):
-        return x
+        x_q = self.q_conv(x).permute(0, 2, 1)
+        x_k = self.k_conv(x)                       
+        x_v = self.v_conv(x)                  
+
+        div = math.sqrt(self.in_channel // 4)
+        energy = torch.bmm(x_q, x_k) / div  
+
+        attention = self.softmax(energy)                      
+
+        x_s = torch.bmm(x_v, attention) 
+        x_s = self.activate(self.after_norm(self.trans_conv(x_s)))
+        
+        x = x + x_s
+        return 
 
 class OffSetAttention(nn.Module):
-    def __init__(self,in_channel):
+    def __init(self,in_channel):
         super(OffSetAttention,self).__init__()
+        self.in_channel = in_channel
+        self.q_conv = nn.Conv1d(in_channel, in_channel // 4, 1, bias=False)
+        self.k_conv = nn.Conv1d(in_channel, in_channel // 4, 1, bias=False)
+        self.v_conv = nn.Conv1d(in_channel, in_channel, 1)
 
-    def forward(self):
-        pass
+        self.q_conv.weight = self.k_conv.weight 
+        self.trans_conv = nn.Conv1d(in_channel, in_channel, 1)
+        self.after_norm = nn.BatchNorm1d(in_channel)
+        self.activate = nn.ReLU()
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self,x):
+        x_q = self.q_conv(x).permute(0, 2, 1)
+        x_k = self.k_conv(x)    
+        x_v = self.v_conv(x)
+
+        energy = torch.bmm(x_q, x_k)
+        attention_raw = self.softmax(energy)
+        sum_atten_raw = 1e-9 + attention.sum(dim=1, keepdims=True)
+        attention = attention_raw / sum_atten_raw 
+
+        x_a = torch.bmm(x_v, attention)
+        x_d = x - x_a
+        x_r = self.activate(self.after_norm(self.trans_conv(x_d)))
+        x = x + x_r
+
+        return x
 
 class SampleGroup(nn.Module):
     def __init__(self,in_channel):
